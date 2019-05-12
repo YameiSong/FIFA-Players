@@ -1,0 +1,11 @@
+[
+    {
+        "User-agent": "*",
+        "Disallow": [
+            "/api.php",
+            "/ajax.php",
+            "/sso/",
+            "/players/compare"
+        ]
+    }
+]
