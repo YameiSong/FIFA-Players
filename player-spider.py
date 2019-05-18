@@ -5,7 +5,6 @@ import urllib.parse
 import urllib.request
 from bs4 import BeautifulSoup
 import json
-import time
 import sqlite3
 
 # Ignore SSL certificate errors
@@ -14,9 +13,8 @@ ctx.check_hostname = False
 ctx.verify_mode = ssl.CERT_NONE
 
 count = 0
-# playerLinks = dict()
-# nextLinks = list()
 disallowedLinks = list()
+root_url = 'https://sofifa.com/players'
 
 # find out disallowed links for all user-agents
 fhandle = open('robots.json')
@@ -41,20 +39,6 @@ CREATE TABLE IF NOT EXISTS NextLinks(
 )
 ''')
 
-# Pick up where we left off
-start = None
-cur.execute('SELECT max(id) from NextLinks')
-try:
-    row = cur.fetchone()
-    if row is None:
-        start = 0
-    else:
-        start = row[0]
-except:
-    start = 0
-
-if start is None : start = 0
-
 # web crawling and put data into sqlite
 def AddPlayerLinksToDict(thisUrl):
     # specify user-agent to adress this error:
@@ -72,8 +56,8 @@ def AddPlayerLinksToDict(thisUrl):
         aTags = tag.find_all('a')
         playerName = aTags[0].text.strip()
         playerLink = aTags[0].get('href', None)
-        # playerLinks[playerName] = playerLink
-        cur.execute('INSERT OR IGNORE INTO PlayerLinks (name, url) VALUES (?, ?)', (playerName, playerLink))
+        cur.execute(
+            'INSERT OR IGNORE INTO PlayerLinks (name, url) VALUES (?, ?)', (playerName, playerLink))
 
     # find out link of Next page
     # max: https://sofifa.com/players?offset=18120
@@ -81,44 +65,31 @@ def AddPlayerLinksToDict(thisUrl):
     nextTag = soup.find_all('a', text='Next')
     if len(nextTag) != 0:
         nextLink = nextTag[0].get('href', None)
-        # nextLinks.append(nextLink)
-        cur.execute('INSERT OR IGNORE INTO NextLinks (url) VALUES (?)', (nextLink, ))
+        cur.execute(
+            'INSERT OR IGNORE INTO NextLinks (url) VALUES (?)', (nextLink, ))
     else:
         nextLink = None
 
-print(start)
-if start == 0:
-    # root_url: the site that will be crawled
-    root_url = 'https://sofifa.com/players'
-    print('root')
-    AddPlayerLinksToDict(root_url)
-    count += 1
-else:
-    cur.execute('SELECT url FROM NextLinks WHERE id = ?', (start, ))
-    row = cur.fetchone()
-    if row is None:
-        conn.commit()
-        conn.close()
-        print('Done! All players are saved.')
-        exit()
-    else:
-        nextUrl = 'https://sofifa.com' + row[0]
-
 while(True):
     try:
-        cur.execute('SELECT max(id), url from NextLinks')
+        # Pick up where we left off
+        cur.execute('SELECT max(id), url FROM NextLinks')
         try:
             row = cur.fetchone()
-            if row is None:
+            if row[1] == 'javascript:void(0);':
+                print('Done! All players are retrieved.')
                 break
+            else:
+                nextUrl = 'https://sofifa.com' + row[1]
         except:
-            break
-        
-        nextUrl = 'https://sofifa.com' + row[1]
+            nextUrl = root_url
+            print('Start from root')
+
         if row[1] in disallowedLinks:
             print('Error: this url is not allowed to visit')
             exit()
         else:
+            print('Retrieving', row[1], '...')
             AddPlayerLinksToDict(nextUrl)
             count += 1
             if count % 2 == 0:
